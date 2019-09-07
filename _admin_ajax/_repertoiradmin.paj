@@ -1,0 +1,241 @@
+# Q-Admin v.5.0 (20161223) !
+
+$publication_type[$cookie:type]
+
+^if(def $form:uid){$uid[$form:uid]}{$uid[^math:uid64[]]}
+$cookie:uid[$uid]
+### new
+^if($form:action eq "new"){
+	$uid[^math:uid64[]]
+	$cookie:uid[$uid]
+}
+### remove
+^if($form:action eq "remove"){
+	^connect[$CONNECT]{
+		^void:sql{DELETE FROM ${BASE}repertoir WHERE id = "$form:id"}
+		$uid[^math:uid64[]]
+		$cookie:uid[$uid]
+	}
+}
+
+### active
+^if($form:action eq "active"){
+	^connect[$CONNECT]{
+	$a[^string:sql{select active from ${BASE}repertoir WHERE id = "$form:id"}[$.limit(1) $.default[0]]] 
+	^void:sql{UPDATE ${BASE}repertoir SET active ="^if($a eq '0'){1;0}" WHERE id = $form:id}
+	}
+
+}
+
+
+^if(!def $form:action){
+	^if(def $form:name
+){ 
+		^connect[$CONNECT]{ 
+			$or[^string:sql{select id from ${BASE}repertoir WHERE id = "$form:id"}[$.limit(1) $.default[0]]] 
+			^if($or eq "0"){ 
+				^void:sql{INSERT INTO ${BASE}repertoir SET 
+					^form:fields.foreach[field;value]{ 
+						^switch[$field]{
+							^case[fd01]{$v[$value] $v[^datatime_sql[$v;sql]] $field = "$v"}
+							^case[DEFAULT]{$field = "$value"}
+						}
+					}[,]
+				}
+			}{
+				^void:sql{UPDATE ${BASE}repertoir SET 
+					^form:fields.foreach[field;value]{ 
+						^switch[$field]{
+							^case[fd01]{$v[$value] $v[^datatime_sql[$v;sql]] $field = "$v"}
+							^case[DEFAULT]{$field = "$value"}
+						}
+					}[,] WHERE id = "$or"
+				}
+			}
+		}
+	}
+}
+
+
+	^connect[$CONNECT]{
+		$pub[^table::sql{SELECT * FROM ${BASE}repertoir WHERE id = "$form:id"}]
+	}
+
+
+^if($form:action ne "list"){
+<script src="/admin/_includes/bootstrap/js/moment-with-locales.min.js"></script>
+<script src="/admin/_includes/bootstrap/js/bootstrap-datetimepicker.js"></script>
+<link rel="stylesheet" type="text/css" href="/admin/_includes/bootstrap/css/bootstrap-datetimepicker.css"/>
+<script src="/admin/_includes/inserthtml.com.file-upload/javascript.js"></script>
+<link rel="stylesheet" href="/admin/_includes/inserthtml.com.file-upload/style.css">
+
+
+<script>
+jQuery(document).ready(allCompl)^;
+jQuery(document).ajaxComplete(allCompl)^;
+
+function allCompl(){
+	jQuery('button#submit_formx').unbind()^;
+	jQuery(function () {
+		jQuery('#deadline_applications').datetimepicker({
+			locale: 'uk',
+			format: 'DD.MM.YYYY HH:mm'
+			})^;
+	})^;
+	
+	jQuery(function () {
+		jQuery('#fd01').datetimepicker({
+			locale: 'uk',
+			format: 'DD.MM.YYYY HH:mm'
+		})^;
+	})^;
+
+#	jQuery(document).on("click", "#submit_formx", function(){
+		
+#	})
+	
+
+
+
+}
+</script>
+
+
+
+^connect[$CONNECT]{
+	$performances[^table::sql{SELECT id, name, link FROM ${BASE}publications WHERE type = "performances" AND active = "1"}]
+}
+<div class="row" style="max-width:400px^;padding:40px">
+<form role="form" method="POST" id="formx" action="javascript:void(null)^;">
+<input id="id" name="id" type="hidden" value="$form:id">
+
+
+<div class="col-xs-12">
+	<div class="form-group">
+		<label class="control-label">$_t._date:</label>
+		<div class='input-group date' id='fd01'>
+			<input type='text' class="form-control" id="fd01" name="fd01" value="^if($pub.fd01 ne "" ){^datatime_sql[$pub.fd01;loc]}{^datenow_loc[]}">
+			<span class="input-group-addon">
+			<span class="glyphicon glyphicon-calendar"></span>
+				</span>
+		</div>
+	</div>
+</div>
+
+<div class="col-xs-12">
+	<div class="form-group">
+       	<label class="control-label">Спектакль:</label>
+       	<select class="form-control" id="name" name="name">
+        	^performances.menu{
+        		<option value="$performances.name" ^if($pub.name eq "$performances.name"){selected}>$performances.name</option>
+        	}
+        </select>
+    </div>
+</div>
+<div class="col-xs-12">
+	<div class="form-group">
+       	<label class="control-label">Зал:</label>
+       	<select class="form-control" id="place" name="place">
+
+        		<option value="великий зал" ^if($pub.place eq "великий зал"){selected}>великий зал</option>
+        		<option value="малий зал" ^if($pub.place eq "малий зал"){selected}>малий зал</option>
+        		<option value="кафе-театр" ^if($pub.place eq "кафе-театр"){selected}>кафе-театр</option>
+
+        </select>
+    </div>
+</div>
+<div class="col-xs-12">
+	<div class="form-group">
+       	<label class="control-label">Ссылка на покупку билетов:</label>
+       	<input class="form-control" id="link" name="link" value="$pub.link"></input>
+    </div>
+</div>
+
+
+
+
+<div style="width:40%^; margin:15px^; float:left">
+	<button id="submit_formx" type="submit" class="btn btn-default" onClick="javascript:
+		var msg   = jQuery('#formx').serialize()^;
+			jQuery.ajax({
+				type: 'POST',
+				url: '/admin/_admin_ajax/_repertoiradmin.paj',
+				data: msg,
+				success: function(data) {
+					jQuery('#middle-panel').html(data) ^;
+				},
+				error:  function(xhr, str){
+					alert('Виникла помилка: ' + xhr.responseCode)^;
+				}
+			})^;
+			jQuery.post('_admin_ajax/_repertoiradmin.paj', {'action' : 'list', 'uid' : '$form:uid'}, function(data){
+				jQuery('#left-content').html(data) ^;	
+			})
+			">^if(def $form:id){$_t._update}{$_t._send}
+	</button>
+</div>
+
+</div>
+
+
+</form>
+
+
+}{
+
+
+
+
+##### list
+
+
+
+^connect[$CONNECT]{
+$pub[^table::sql{SELECT * FROM ${BASE}repertoir ORDER BY CAST(fd01 AS datetime) DESC}]
+#^pub.sort{$pub.id}[desc]
+}
+<table style="width:100%^; margin-top:15px^;">
+^pub.menu{	<tr id="$pub.id" style="">
+				<td style="width:15px">&nbsp^;</td>
+				<td style="vertical-align:middle"><p style="margin: 10px 0^;"><b>$pub.fd01</b> ($pub.place)<br><b>$pub.name
+</b></p></td>
+				<td style="width:15px">&nbsp^;</td>
+				<td style="width:20px"><a id="edit" style="cursor:pointer" 
+				onClick="javascript: 
+						jQuery.post('_admin_ajax/_repertoiradmin.paj', {'id' : '$pub.id', 'action' : 'edit'}, function(data){
+							jQuery('tr').attr('style','')^; 
+							jQuery('tr#$pub.id').attr('style','background-color:#C2E4FD')^; 
+							jQuery('#middle-panel').html(data) ^;	
+						})">
+				<span class="glyphicon glyphicon-pencil"></span></a>
+				</td>
+				<td style="width:20px"><a id="remove" style="cursor:pointer" 
+				onClick="javascript: 
+						if (confirm('${_t._delete}?')) {
+							jQuery.post('_admin_ajax/_repertoiradmin.paj', {'id' : '$pub.id', 'action' : 'remove'}, function(data){
+							jQuery('#middle-panel').html(data) ^;	
+							})^;
+							jQuery.post('_admin_ajax/_repertoiradmin.paj', {'action' : 'list', 'id' : '$form:id'}, function(data){
+							jQuery('#left-content').html(data) ^;	
+							})
+						
+						} else {
+							
+						}
+						"><span class="glyphicon glyphicon-remove"></span></a></td>
+				<td style="width:20px"><a id="active" style="cursor:pointer"
+				onClick="javascript: 
+						jQuery.post('_admin_ajax/_repertoiradmin.paj', {'id' : '$pub.id', 'action' : 'active'}, function(data){
+						})^;
+						jQuery.post('_admin_ajax/_repertoiradmin.paj', {'action' : 'list', 'id' : '$form:id'}, function(data){
+							jQuery('#left-content').html(data) ^;	
+						})"><span id="s-${pub.id}" class="glyphicon glyphicon-ok ^if($pub.active eq '1'){check-active;check-noactive}"></span></a></td>
+				<td style="width:15px">&nbsp^;</td>
+			</tr>}
+</table>
+
+
+}
+
+
+

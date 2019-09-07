@@ -1,0 +1,170 @@
+^connect[$CONNECT]{
+#new type
+
+^if($form:action eq "new_type_name" && $form:new_type_name ne ""){
+	^void:sql{INSERT INTO ${BASE}publications_set SET type = "$form:new_type_name"}
+	$mmidx(^string:sql{SELECT MAX(idx) FROM ${BASE}structure WHERE parent_id = "0"}[$.default(0)])
+	^mmidx.inc[]
+	^void:sql{INSERT INTO ${BASE}structure SET idx = "$mmidx", position = "1", parent_id = "0", name = "$form:new_type_name", title = "$form:new_type_name", fu = "$form:new_type_name", pub_link = "$form:new_type_name"}
+}
+
+#edit
+^if($form:action eq "edit" && def $form:type && $form:type ne ""){
+	$ff[$form:fields]
+	^ff.delete[action]
+	^void:sql{UPDATE ${BASE}publications_set SET 
+		^ff.foreach[field;value]{$v[$value] 
+
+		$field = "$v" }[,] WHERE id = $form:id}
+
+}
+
+# remove
+^if($form:action eq "remove" && $form:id ne ""){
+	^void:sql{DELETE FROM ${BASE}publications_set WHERE id = $form:id}
+
+}
+
+#list
+
+^if($form:action eq "list"){
+	$flist[^table::sql{SELECT id, type FROM ${BASE}publications_set}]
+	<table style="width:100%^; margin-top:15px^;">
+		^flist.menu{
+			<tr id="$flist.id" style="">
+				<td style="width:15px">&nbsp^;</td>
+				<td style="vertical-align:middle"><p style="margin: 10px 0^;"><b>$flist.id</b>/<b>$flist.type</b></p></td>
+				<td style="width:15px">&nbsp^;</td>
+				<td style="width:20px">
+					<a id="edit" style="cursor:pointer" 
+						onClick="javascript: 
+							jQuery.post('_admin_ajax/_publicadmin_set.paj', {'id' : '$flist.id', 'id' : '$flist.id', 'action' : 'edit', 'xid' : '$form:xid'}, function(data){
+								jQuery('tr').attr('style','')^; 
+								jQuery('tr#$flist.id').attr('style','background-color:#C2E4FD')^; 
+								jQuery('#middle-panel').html(data) ^;	
+						})">
+						<i class="fas fa-pen-square" style="font-size:18px"></i>
+					</a>
+				</td>
+				<td style="width:30px">
+					<a id="remove" style="cursor:pointer" 
+						onClick="javascript: 
+							if (confirm('${_t._delete}?')) {
+								jQuery.post('_admin_ajax/_publicadmin_set.paj', {'id' : '$flist.id', 'action' : 'remove', 'xid' : '$form:xid'}, function(data){
+									jQuery('#middle-panel').html(data) ^;	
+								})
+								.done(function(){
+									jQuery.post('_admin_ajax/_publicadmin_set.paj', {'action' : 'list', 'id' : '$form:id', 'xid' : '$form:xid'}, function(data){
+										jQuery('#left-content').html(data) ^;	
+									})^;
+								})
+							} else {
+							}
+						">
+						<i class="fa fa-times" style="font-size:18px"></i>
+					</a>
+				</td>
+			</tr>
+		}
+	</table>
+	<div class="row" style="margin:15px^;padding:0">
+		<form role="form" method="POST" id="new_type" action="javascript:void(null)^;" style="width:100%">
+			<input type="hidden" name="action" value="new_type_name">
+			<div class="form-group">
+				<label class="control-label">$_t._name:</label>
+				<div class="input-group date" id="new_type_name_1" style="width:100%">
+					<input type='text' class="form-control" id="new_type_name" name="new_type_name" value="">
+				</div>
+			</div>
+			<button id="submit_new_type" type="submit" class="btn btn-primary" style="width:100%" onClick="javascript:
+				var msg   = jQuery('#new_type').serialize()^;
+				jQuery.ajax({
+					type: 'POST',
+					url: '/admin/_admin_ajax/_publicadmin_set.paj',
+					data: msg,
+					success: function(data) {
+						jQuery('#middle-panel').html(data) ^;
+						jQuery.post('_admin_ajax/_publicadmin_set.paj', {'action' : 'list', 'id' : '$form:id', 'xid' : '$form:xid'}, function(data){
+							jQuery('#left-content').html(data) ^;	
+						})
+					},
+					error:  function(xhr, str){
+						alert('Виникла помилка: ' + xhr.responseCode)^;
+					}
+				})^;
+				">$_t._add
+			</button>
+		</form>
+	</div>
+
+}
+
+
+
+
+
+####### edit
+^if($form:action eq "edit"){
+	$fval[^table::sql{SELECT * FROM ${BASE}publications_set WHERE id = "$form:id"}]
+	$tcol[^table::sql{SHOW COLUMNS FROM ${BASE}publications_set}]
+	$fcol[^table::sql{SHOW COLUMNS FROM ${BASE}publications}]
+	^tcol.save[/zt1.txt]
+	<form role="form" method="POST" id="formx" action="javascript:void(null)^;">
+		<div class="row" style="margin:0^;padding:15px">
+		<div class="col-12">
+			<input  id="action" name="action" type="hidden" value="edit">
+			$iii(0)
+			$n(0)
+			^tcol.menu{
+				^if($n == 0){<div class="row">}
+				$f[$tcol.Field]
+				^if($tcol.Field eq "id" || $tcol.Field eq "type"){
+					<input  id="$tcol.Field" name="$tcol.Field" type="hidden" value="$fval.$f">
+				}{
+					<div class="col-6" id="z$iii $n"> 
+						<div class="form-group">
+							<label class="control-label" for="$tcol.Field">
+								^if(^tcol.Field.left(1) eq "n"){
+									$fdata[^tcol.Field.right(3)] 
+									$fdata[f$fdata] 
+									$xx[^fcol.select($fcol.Field eq "$fdata")] Table: publications. Field: ${xx.Field}. ^if($xx.Field eq "ft03" || $xx.Field eq "ft04"){(HTML + EDITOR!) }^if(^xx.Field.left(2) eq "ff"){(DOWNLOAD FILE) }Type: ${xx.Type}.
+								}{
+									Table: publications_set. Field: ${tcol.Field}. Type: ${tcol.Type}. (SORT INDEX) Default: ${tcol.Default}.
+								}:</label>
+							<input class="form-control" name="$tcol.Field" type="text" value="$fval.$f">
+						</div>
+					</div>
+				}
+				^iii.inc[]
+				^n.inc[]
+				^if($n == 2){</div> $n(0)}
+			}[]
+			</div>
+		</div>
+		</div>
+		<div class="row" style="margin:0^;padding:15px^;float:right">
+			<button id="submit_formx" type="submit" class="btn btn-primary" onClick="javascript:
+				var msg   = jQuery('#formx').serialize()^;
+					jQuery.ajax({
+						type: 'POST',
+						url: '/admin/_admin_ajax/_publicadmin_set.paj',
+						data: msg,
+						success: function(data) {
+							jQuery('#middle-panel').html(data) ^;
+						},
+						error:  function(xhr, str){
+							alert('Виникла помилка: ' + xhr.responseCode)^;
+						}
+					})^;
+					jQuery.post('_admin_ajax/_publicadmin_set.paj', {'action' : 'list', 'id' : '$form:id'}, function(data){
+						jQuery('#left-content').html(data) ^;	
+					})
+				">^if(def $form:id){$_t._update}{$_t._send}
+			</button>
+		</div>
+	</form>
+}
+
+
+}
+#end connect

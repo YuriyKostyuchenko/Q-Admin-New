@@ -1,0 +1,185 @@
+^memory:compact[]
+^connect[$CONNECT]{
+
+$cataloque_id[^string:sql{SELECT id FROM ${BASE}structure WHERE pub_link = 'cataloque'}[$.limit(1) $.default{0}]]
+}
+^if(def $form:id){$id[^form:id.match[node_][]{}]}
+#===========================================================================================================
+
+^switch[$form:operation]{ 
+
+	^case[loadfile]{
+		^connect[$CONNECT]{
+			$rights[^string:sql{SELECT active FROM ${BASE}admins WHERE login="$cookie:user"}[$.limit(1) $.default[0]]]
+			$lock[^string:sql{SELECT q FROM ${BASE}structure WHERE id="$form:id"}[$.limit(1) $.default[0]]]
+			$bodytext[^string:sql{SELECT data FROM ${BASE}content WHERE id="$id"}[$.limit[1] $.default{No Data}]]
+			^if($rights ne "9" && $lock eq "1"){
+				$result[<div style="background-color:#bbb" class="w-100">^untaint{$bodytext}</div><div class="container h-60"><div class="row h-100 justify-content-center align-items-center"><h1>Not editable. Not editable. Blocked by an Evil Admin.</h1></div></div>]
+			}{
+				$result[^untaint{$bodytext}]
+			}
+		}
+	}
+
+	^case[savefile]{  
+		^if(def $form:id){$id[^form:id.match[node_][]{}]}
+		^connect[$CONNECT]{
+			$rights[^string:sql{SELECT active FROM ${BASE}admins WHERE login="$cookie:user"}[$.limit(1) $.default[0]]]
+			$lock[^string:sql{SELECT q FROM ${BASE}structure WHERE id="$form:id"}[$.limit(1) $.default[0]]]
+			^if($rights ne "9" && $lock eq "1"){
+
+			}{
+				$data[^taint[js][$form:data]]
+				^void:sql{update ${BASE}content set data = "$data" where id = "$id"}
+			}
+		}
+		update ${BASE}content set data = "$data" where id = "$id"
+	}
+
+	^case[image_upload]{  
+		$pref[^if($form:id eq "undefined"){}{${form:id}-}]
+		^form:file.save[binary;/images/${pref}${form:file.name}]
+		$result[^json:string[$.location[/images/${pref}${form:file.name}]]]
+	}
+
+
+	^case[rename_node]{  
+		^if($form:text ne ""){
+			^connect[$CONNECT]{
+				$data[^form:text.match[([\\])][g]{\\\\}]
+				$data[^data.match[(["])][g]{'}]
+				^void:sql{update ${BASE}structure set name = "$data" where id = "$id"}
+				^if($cataloque_id ne "0"){
+					$cid[^string:sql{SELECT id FROM ${BASE}cataloque WHERE id="$id"}[$.limit(1) $.default{0}]]
+					^if($cid ne "0"){^void:sql{update ${BASE}cataloque set f1 = "$data" where id = "$id"}}
+				}			
+			}
+		}
+	}
+
+
+	^case[delete_node]{  
+		^connect[$CONNECT]{
+			$childrens(^string:sql{SELECT COUNT(*) FROM ${BASE}structure where parent_id = "$id"})
+			$childrens
+			^if($childrens == 0){
+				^void:sql{DELETE FROM ${BASE}structure where id = "$id"}
+				$cid[^string:sql{SELECT id FROM ${BASE}content WHERE id="$id"}[$.limit(1) $.default{0}]]
+				^if($cid ne "0"){^void:sql{DELETE FROM ${BASE}content where id = "$id"}}
+				^if($cataloque_id ne "0"){
+					$cid[^string:sql{SELECT id FROM ${BASE}cataloque WHERE id="$id"}[$.limit(1) $.default{0}]]
+					^if($cid ne "0"){^void:sql{DELETE FROM ${BASE}cataloque where id = "$id"}}
+				}
+				$echo[Запись удалена]
+			}
+		}
+	}
+
+
+
+
+	^case[get_node]{  
+		^connect[$CONNECT]{
+			$list[^table::sql{select * from ${BASE}structure where idx = "^if(def $form:idx){$form:idx;1}" and parent_id = "^if($form:idx eq "" && $form:id eq "#"){0;$id}" ORDER BY position}]
+			$result[[
+				^list.menu{
+					$rel[folder]
+					$child[^table::sql{select parent_id from ${BASE}structure where parent_id = "$list.id"  ORDER BY position}]
+					^if(^child.count[] == 0){$icon[file];$icon[folder]}
+					^if($id eq 0){$icon[drive]}
+					$cont[^table::sql{select * from ${BASE}structure where id = "$list.id"}]
+					$flag[f${cont.active}${cont.q}${cont.del_no}${cont.container}${cont.secret}${cont.banner_link}]
+					{"id":"$list.id", "text": "^string:sql{select name from ${BASE}structure where id ="$list.id"}[$.limit(1) $.default[NoName]]", "children" : ^if(^child.count[] == 0){false;true}, "icon":"^if(^child.count[] == 0){file;folder}", ^if($list.id eq "1000"){"type":"root",}"flag":"$flag" }
+				}[,]
+			]]
+		}
+	}
+	^case[create_node]{
+		$data[^form:text.match[([\\])][g]{\\\\}]
+		$data[^data.match[(["])][g]{'}]
+		^connect[$CONNECT]{
+			$parent_id[$form:id]
+			$afterEl[^table::sql{SELECT * FROM ${BASE}structure WHERE id="$parent_id"}]
+			$rootEls[^table::sql{SELECT * FROM ${BASE}structure WHERE idx="$form:idx"  AND  parent_id = "$parent_id" ORDER BY position}]
+			$parent_id[^if(def $rootEls){$rootEls.parent_id;$parent_id} ]
+			$data[^form:text.match[([\\])][g]{\\\\}]
+			$data[^data.match[(["])][g]{'}]
+			$i(^rootEls.count[])
+			^i.inc[]
+			^void:sql{INSERT INTO ${BASE}structure set idx = "$form:idx", parent_id = "$parent_id", position = "$i", name = "$data", title = "$data"}
+			$id[^string:sql{SELECT id FROM ${BASE}structure WHERE idx = "$form:idx" AND parent_id = "$parent_id" AND position = "$i" AND name = "$data"}[$.limit(1)]]
+			^void:sql{INSERT INTO ${BASE}content set id = "$id", data = ""}
+			^if($cataloque_id ne "0"){
+			^void:sql{INSERT INTO ${BASE}cataloque set id = "$id", f1 = "$data", art="^math:uid64[]"}
+			}
+			$result[$id]
+		}
+	}
+	^case[move_node]{
+		^if(def $form:id && def $form:position && def $form:parent){
+		$id[$form:id]
+		$parent_id[$form:parent]
+		^connect[$CONNECT]{
+			$transportEl[^table::sql{SELECT * FROM ${BASE}structure WHERE id="$id"}]
+			$parent[^string:sql{SELECT parent_id FROM ${BASE}structure WHERE id="$parent_id" AND idx="$cookie:idx"}[$.limit(1)]]
+			parent = $parent
+# если самый верхний элемент (parent_id = 0) !!!
+			^if($parent eq "0"){$parent[$form:parent]}
+			^switch[$form:operation]{
+				^case[move_node]{
+					$id[$form:id]
+					$parent_id[$form:parent]
+					id=$id  parent=$parent_id <br>
+					$beforeEl[^table::sql{SELECT * FROM ${BASE}structure WHERE id="$parent_id"}]
+					$rootEls[^table::sql{SELECT * FROM ${BASE}structure WHERE idx="$cookie:idx"  AND  parent_id = "$parent_id" AND id !="$id" ORDER BY position}]
+					SELECT * FROM ${BASE}structure WHERE idx="$cookie:idx"  AND  parent_id = "$parent_id" AND id !="$id" ORDER BY position <br>
+					$position($form:position + 1)
+					$i(1)
+					^if($form:position ne "0"){
+						^rootEls.menu{
+							^void:sql{update ${BASE}structure set   parent_id = "$rootEls.parent_id", position = "$i" where id = "$rootEls.id"}
+							1.update ${BASE}structure set   parent_id = "$rootEls.parent_id", position = "$i" where id = "$rootEls.id" <br>
+							^if($form:position eq $i){ 
+								^i.inc[]
+								^void:sql{update ${BASE}structure set   parent_id = "$rootEls.parent_id", position = "$i" where id = "$transportEl.id"}
+								2.update ${BASE}structure set   parent_id = "$rootEls.parent_id", position = "$i" where id = "$transportEl.id" <br>
+							}
+							^i.inc[] 
+						}
+					}{
+						^void:sql{update ${BASE}structure set   parent_id = "$parent_id", position = "$i" where id = "$transportEl.id"}
+						update ${BASE}structure set   parent_id = "$parent_id", position = "$i" where id = "$transportEl.id" <br>
+						^rootEls.menu{
+							^i.inc[] 
+							^void:sql{update ${BASE}structure set   parent_id = "$rootEls.parent_id", position = "$i" where id = "$rootEls.id"}
+							update ${BASE}structure set   parent_id = "$rootEls.parent_id", position = "$i" where id = "$rootEls.id" <br>
+						}
+					}
+				} 
+			}
+		}
+	}
+}
+	^case[summernote_img_upload]{
+		$iname[^form:image.name.match[\s][g]{_}]
+		$iname[^iname.lower[]]
+		$fext[^file:justext[$iname]]
+		$fname[^file:justname[$iname]]
+		$fname[^fname.lower[]]
+		$fname[^fname.match[([ \.@#№`!&*\(\)^$^^])][g]{}]
+		$fname[^fname.match[([ї|Ї|ï|ĭ])][g]{i}]
+		$fname[^fname.match[(['|"|`|^;])][g]{_}]
+		$fname[^hz2_to_translit[$fname]]
+		^form:image.save[binary;${form:path}/${fname}.$fext]
+		$af[^file::exec[/convert;;-scale;1200x1200;-antialias;images/${fname}.$fext;images/${fname}.$fext]]
+#file :status: $af.status - text: $af.text - stderr: $af.stderr
+		$result[${form:path}${fname}.$fext]
+	}
+	^case[publications_img_upload]{
+		$ext[^file:justext[$form:file.name]]
+		^form:file.save[binary;/${form:path}${form:nfname}.$ext]
+	}
+}
+#end switch
+#===========================================================================================================
+

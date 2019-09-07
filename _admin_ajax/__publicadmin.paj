@@ -1,0 +1,641 @@
+# Q-Admin v.5.0 (20180514/20190907) !
+
+^if($form:type ne ""){
+	$cookie:type[$form:type]
+	$type[$form:type]
+}{
+	$type[$cookie:type]
+}
+$path[/images/${type}]
+
+
+^connect[$CONNECT]{
+### Тип поля карты
+$fd[^table::sql{SHOW COLUMNS FROM ${BASE}publications LIKE 'f%'}]
+$nd[f^card_fields_name.f.mid(1)]
+$tf[^fd.select($fd.Field eq "$nd")]
+$ftype[^tf.Type.match[\w*][']]
+### $ftype.match содержит тип поля!
+$idx[^string:sql{SELECT idx FROM ${BASE}structure WHERE pub_link = "$type"}[$.limit(1) $.default[0]]]
+}
+
+^if($idx ne "0"){$cookie:idx[$idx]}
+
+^if(def $form:uid){$uid[$form:uid]}{$uid[^math:uid64[]]}
+$cookie:uid[$uid]
+
+
+### save_new
+^if($form:action eq "save_new"){
+	^connect[$CONNECT]{
+		^void:sql{INSERT INTO ${BASE}publications SET 
+			type = "$type",
+			active = "1"
+			^form:fields.foreach[field;value]{ 
+				^switch[^field.left(2)]{
+					^case[fx]{$v[$value] $v[^v.match[\D][g]{.}] $v[^v.match[\s][g]{}] ,$field = "$v"}
+					^case[fd]{$v[$value] $v[^datatime_sql[$v;sql]] ,$field = "$v"}
+					^case[ff]{$v[$value.name] ,$field = "$v"}
+
+					^case[pa;ac;id]{} # left 2 from path, action, id
+					^case[DEFAULT]{,$field = "$value"}
+				}
+			}[]
+		}
+		^form:fields.foreach[field;value]{ ^if($form:$field is file){$e[^file:justext[$value.name]] ^form:$field.save[binary;/images/publications/${form:uid}/${field}.$e]}}
+	}
+}
+
+### update
+^if($form:action eq "update"){
+	^connect[$CONNECT]{
+		^void:sql{UPDATE ${BASE}publications SET 
+			temp = ""
+			^form:fields.foreach[field;value]{ 
+				^switch[^field.left(2)]{
+					^case[fx]{$v[$value] $v[^v.match[\D][g]{.}] $v[^v.match[\s][g]{}] ,$field = "$v"}
+					^case[fd]{$v[$value] $v[^datatime_sql[$v;sql]] ,$field = "$v"}
+					^case[ff]{$v[$value.name] ,$field = "$v"}
+
+					^case[pa;ac;id]{} # left 2 from path, action, id
+					^case[DEFAULT]{,$field = "$value"}
+				}
+			}[] WHERE id = "$form:id"
+		}
+
+	}
+	
+}
+
+### remove
+^if($form:action eq "remove"){
+	^connect[$CONNECT]{
+		$pr[^string:sql{SELECT uid FROM ${BASE}publications WHERE id = "$form:id"}[$.limit[1] $.default[0]]]
+		^for[i](0;11){
+			$fr[^file:list[${path}/${form:uid}_$i]]
+			^if(^fr.count[] > 0){
+				^fr.menu{
+					^if(-f "${path}/${pr}_${i}/$fr.name"){^file:delete[${path}/${pr}_${i}/$fr.name]}
+				}
+				^if(-d "${path}/${pr}_$i"){^file:delete[${path}/${pr}_$i]}
+			}
+		}
+		^void:sql{DELETE FROM ${BASE}publications WHERE uid = "$form:uid"}
+		$uid[^math:uid64[]]
+		$cookie:uid[$uid]
+	}
+}
+
+### remove_pic
+^if($form:action eq "remove_pic"){
+	^connect[$CONNECT]{
+		$apic[^string:sql{SELECT active_pic FROM ${BASE}publications WHERE id = "$form:id"}[$.limit(1) $.default[]]]
+		^if($apic eq $form:pic){
+			^void:sql{UPDATE ${BASE}publications SET active_pic = "" WHERE id = "$form:id"}
+			$ftid[^string:sql{SELECT id FROM ${BASE}filetext WHERE path = "${form:path}$form:pic"}[$.limit(1) $.default[0]]]
+			^if($ftid ne "0"){
+				^void:sql{DELETE FROM ${BASE}filetext WHERE id = "$ftid"}
+			}
+		}
+		$pe[^string:sql{SELECT uid FROM ${BASE}publications WHERE id = "$form:id"}[$.limit[1] $.default[0]]]
+		$pub[^table::sql{SELECT * FROM ${BASE}publications WHERE id = "$form:id"}]
+		$action[edit] 
+		$cookie:uid[$form:uid]
+		
+	}
+	^if(-f "${form:path}$form:pic"){^file:delete[${form:path}$form:pic]}
+}
+
+### active
+^if($form:action eq "active"){
+	^connect[$CONNECT]{
+	$a[^string:sql{select active from ${BASE}publications WHERE id = "$form:id"}[$.limit(1) $.default[0]]] 
+	^if($a eq '0'){$a[1];$a[0]}
+	^void:sql{UPDATE ${BASE}publications SET active ="$a" WHERE id = "$form:id"}
+	}
+$a
+}
+
+### active_pic
+^if($form:action eq "active_pic"){
+	^connect[$CONNECT]{
+	^void:sql{UPDATE ${BASE}publications SET active_pic = "$form:pic" WHERE id = "$form:id"}
+	}
+}
+
+### text_pic
+^if($form:action eq "text_pic"){
+	^connect[$CONNECT]{
+		$tpid[^string:sql{SELECT id FROM ${BASE}filetext WHERE path = "$form:path" AND pict = "$form:pic"}[$.limit[1] $.default[0]]]
+		^if($tpid eq "0"){
+			^void:sql{INSERT INTO ${BASE}filetext SET text = "$form:txt", path = "$form:path", pict = "$form:pic"}
+					}{
+			^void:sql{UPDATE ${BASE}filetext SET text = "$form:txt" WHERE id = "$tpid"}
+					}
+	
+	$pub[^table::sql{SELECT * FROM ${BASE}publications WHERE id = "$form:id"}]
+	}
+	$action[edit]
+	$cookie:uid[$form:uid]
+}
+
+
+
+
+^connect[$CONNECT]{
+	$pub[^table::sql{SELECT * FROM ${BASE}publications WHERE id = "$form:id"}]
+	$type_pub[^table::sql{SHOW COLUMNS FROM ${BASE}publications}]
+	$name_pub[^table::sql{SELECT * FROM ${BASE}publications_set WHERE type = "$type"}]
+	$tt[^table::create{Field	Type	f	n	a}]
+		^type_pub.menu{
+			$tf[$type_pub.Field]
+			^if(^type_pub.Field.left(1) eq "f" && $type_pub.Field ne "files"){ $fn[^type_pub.Field.right(3)] $fn[n$fn] $fa[^type_pub.Field.right(3)] $fa[a$fa]
+				^tt.append{$type_pub.Field	$type_pub.Type	$pub.$tf	$name_pub.$fn	$name_pub.$fa}
+			}
+			^if(^type_pub.Field.left(1) ne "f"){
+				^tt.append{$type_pub.Field	$type_pub.Type	$pub.$tf}
+			}
+		}
+	$idx[^table::sql{SELECT id, idx, name FROM ${BASE}structure WHERE pub_link = "$type"}]
+### Ищем id раздела структуры публикации в главном меню
+	$pub_id[^string:sql{SELECT id FROM ${BASE}structure WHERE pub_link = "$type"}[$.default[0]]]
+### Меню подразделов публикации
+	$vol[^table::sql{SELECT t1.id, t1.name, t2.name as name_p FROM ${BASE}structure t1, ${BASE}structure t2 WHERE t1.idx = "$cookie:idx" AND t1.active = "1" AND t1.id > "1000" AND t1.parent_id > "0" AND t2.id = t1.parent_id AND t1.parent_id != '$pub_id'}]
+### Меню подразделов публикации
+	$vol[^table::sql{SELECT t1.id, t1.name, t2.name as name_p FROM ${BASE}structure t1, ${BASE}structure t2 WHERE t1.idx = "$cookie:idx" AND t1.active = "1" AND t1.id > "1000" AND t1.parent_id > "0" AND t2.id = t1.parent_id AND t1.parent_id != '$pub_id'}]
+	^vol.sort{$vol.name_p}
+}
+
+
+#### ne list
+^if($form:action eq "edit_pub" || $form:action eq "new_pub"){
+
+	^if($form:action eq "new_pub" && $form:id eq ""){$action[save_new]}
+	^if($form:action eq "edit_pub" && $form:id ne ""){$action[update]}
+	^if($form:action eq "edit_pub"){$cookie:uid[$form:uid]}
+	^if($form:action eq "new_pub"){$cookie:uid[^math:uid64[]]}
+
+	<script type="text/javascript" src="_includes/bootstrap4-moment-with-locales/moment-with-locales.js"></script>
+
+	^connect[$CONNECT]{
+		$idx[^table::sql{SELECT id, idx, name, fu FROM ${BASE}structure WHERE pub_link = "$type"}[$.limit[1]]]
+		$links[^table::sql{SELECT id, name FROM ${BASE}structure WHERE idx = "1" AND id >= "1000"}]
+		^links.sort{$links.id}[desc]
+	}
+	<div class="row" style="margin:20px 0">
+		<div class="col-md-6 col-12">
+			<form role="form" method="POST" id="pubformx" action="javascript:void(null)^;" style="width:100%">
+				<br />$_t._upid: <b>$cookie:uid [$pub.id]</b><br />
+				<div>
+					<input id="id" name="id" type="hidden" value="$form:id">
+					<input id="uid" name="uid" type="hidden" value="$cookie:uid">
+					<input id="path" name="path" type="hidden" value="$path">
+					<input id="action" name="action" type="hidden" value="$action">
+				</div>
+				<div class="row">
+					<div class="col-md-6 col-12">
+						<div class="form-group">
+							<label class="control-label">$_t._link:</label>
+							<select class="form-control" id="link" name="link">
+								<option value="0">$_t._nolink</option>
+								^links.menu{
+									<option value="$links.id" ^if($pub.link eq "$links.id"){selected}>[$links.id] $links.name</option>
+								}
+							</select>
+						</div>
+					</div>
+					<div class="col-md-6 col-12">
+						<div class="form-group">
+							<label class="control-label">$_t._date:</label>
+							<div class='input-group date' id='fd01'>
+								<input type='text' class="form-control datepicker-here" id="fd01" name="fd01" value="^if($pub.fd01 ne "" ){$pub.fd01}{^datenow_sql[]}">
+								<span class="input-group-addon"><span class="glyphicon glyphicon-calendar"></span></span>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="col-xs-12" style="padding:0"> 
+					^if(^vol.count[] != 0 && $type eq "shop"){
+						<label class="control-label">Section:</label>
+						<select  class="form-control" name="sub" >
+							^vol.menu{
+								<option value="$vol.id" ^if($pub.sub eq "$vol.id"){selected}>$vol.name_p $vol.name</option>
+							}
+						</select>
+					}
+					^tt.menu{
+						$field_name[$tt.n]
+						^switch[$tt.Field]{
+							^case[name]{<div class="form-group"><label class="control-label" for="${type_pub.Field}">$_t._name ($_t._title):</label><textarea class="form-control" id="name" name="name" type="text">$tt.f</textarea></div>}
+							^case[id;uid;type;path;active;active_pic;link]{}
+
+							^case[DEFAULT]{
+								^if(${tt.n} ne ""){
+									^if(${tt.Type} eq "text"){
+										^if($tt.Field eq 'ft03' || $tt.Field eq 'ft04'){
+											<div class="form-group">
+												<label class="control-label" for="${type_pub.Field}">^process{^untaint{$tt.n}}:</label>
+												<input id="html" type="hidden" name="${tt.Field}" value="">
+												<input id="summernote-start_html" type="hidden" value="$tt.f">
+												<div id="summernote"></div>
+											</div>
+										}{
+											<div class="form-group">
+												<label class="control-label" for="${type_pub.Field}">^process{^untaint{$tt.n}}:</label>
+												<textarea class="form-control " id="$tt.Field" name="${tt.Field}" >$tt.f</textarea>
+												
+											</div>
+										}
+									}
+									^if(^tt.Field.left(2) eq "ff"){FILE
+										<div class="form-group">
+											<label class="control-label">	$ext[^tt.f.split[.;rh]]
+												<br>
+												^if(-f "${path}/${form:uid}/${tt.Field}.${ext.0}"){<span style="color:green" class="glyphicon glyphicon-ok"></span>}
+										 		^process{^untaint{$tt.n}}:
+										 	</label>
+											<input class="form-control" id="${tt.Field}" name="${tt.Field}" type="file" >
+										</div>
+									}{
+										^if(^tt.Type.left(3) eq "var" || ^tt.Type.left(3) eq "int" || ^tt.Type.left(3) eq "big"){
+											^if(^tt.n.pos[/] eq "-1"){
+												<label class="control-label" id="${tt.Field}">$tt.n:</label>
+												<input class="form-control" name="${tt.Field}" type="text" value="$tt.f">
+										}{
+											$titlesplit[^tt.n.split[:;lh]]
+											$title[$titlesplit.0]
+											$options[$titlesplit.1]
+											$vsplit[^options.split[/;v;v]] 
+											^vsplit.save[/zzz_vsplit_table.txt]
+											<label class="control-label" for="${type_pub.Field}">${title}:</label>
+											<select id="${tt.Field}" name="${tt.Field}" class="form-control">
+												^vsplit.menu{
+													<option value="$vsplit.v" ^if($vsplit.v eq "$tt.f"){selected}>$vsplit.v</option>
+												}				 
+											</select>
+										}
+									}
+									^if(^tt.Type.left(3) eq "dec"){
+										<div class="form-group">
+											<label class="control-label" for="${type_pub.Field}">$tt.n:</label>
+											<input class="form-control" id="${tt.Field}" name="${tt.Field}" type="text" value="$tt.f">
+										</div>
+									}
+								}
+								^if(${tt.Type} eq "datetime"){
+									<div class="form-group">
+										<label class="control-label">^process{^untaint{$tt.n}}:</label>
+										<div class='input-group date' id='fd01'>
+											<input type='text' class="form-control" id="${tt.Field}" name="${tt.Field}" value="^if(${tt.f} ne "" ){^datatime_sql[${tt.f};loc]}{^datenow_loc[]}">
+											<span class="input-group-addon"><span class="glyphicon glyphicon-calendar"></span></span>
+										</div>
+									</div>
+								}
+							}
+						}
+					}
+				}
+				<div>
+					<button id="submit_pub" type="submit" class="btn btn-primary" style="width:100%">$_t._send</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
+<script type="text/javascript">
+^$(document).ready(function() {
+
+^$('.datepicker-here').datepicker({	
+	timepicker: true
+}
+	)^;
+
+	var BrowseButton = function (context) {
+		var ui = ^$.summernote.ui^;
+		var button = ui.button({
+			contents: '<i class="far far fa-eye"></i>',
+			tooltip: '$_t._public',
+			lang: "$cookie:loc",
+			click: browse
+		})^;
+		return button.render()^;
+	}^;
+
+	^$('#summernote').summernote({
+
+		lang:'$cookie:loc',
+		addclass: {
+			debug: false,
+			classTags: [{title:"Врезка","value":"alert alert-info"},{title:"Врезка","value":"alert alert-success"},{title:"Врезка","value":"alert alert-warning"},{title:"Зображення в колі","value":"img-circle"}, "img-responsive"]
+		},
+		buttons: {
+			browsedraft: BrowseButton
+		},
+		toolbar: [
+			['style', ['style', 'addclass']],
+			['font', ['bold', 'italic', 'underline', 'clear']],
+//			['fontname', ['fontname']],
+//			['color', ['color']],
+			['para', ['ul', 'ol', 'paragraph']],
+//			['height', ['height']],
+			['table', ['table']],
+			['insert', ['link', 'picture', 'video', 'hr']],
+//			['view', ['fullscreen', 'codeview']],
+			['view', ['codeview', 'undo', 'redo']],
+			['cleaner',['cleaner']],
+			['mybutton', ['browsedraft']]
+		],
+		cleaner:{
+			action: 'both', // both|button|paste 'button' only cleans via toolbar button, 'paste' only clean when pasting content, both does both options.
+			newline: '<br>', // Summernote's default is to use '<p><br></p>'
+			notStyle: 'position:absolute^;top:0^;left:0^;right:0', // Position of Notification
+			icon: '<i class="far fa-file-word"></i>',
+			keepHtml: false, // Remove all Html formats
+			keepOnlyTags: ['<p>', '<br>', '<ul>', '<li>', '<b>', '<strong>','<i>', '<a>'], // If keepHtml is true, remove all tags except these
+			keepClasses: false, // Remove Classes
+			badTags: ['style', 'script', 'applet', 'embed', 'noframes', 'noscript', 'html'], // Remove full tags with contents
+			badAttributes: ['style', 'start'], // Remove attributes from remaining tags
+			limitChars: false, // 0/false|# 0/false disables option
+			limitDisplay: 'both', // text|html|both
+			limitStop: false // true/false
+		},
+
+		height: (^$(window).height() - 0),
+		callbacks: {
+			onImageUpload: function(image) {
+				uploadImage(image[0])^;
+			}
+		}
+	})^;
+
+	var markupStr = jQuery('#summernote-start_html').val()^;
+	^$('#summernote').summernote('code', markupStr)^;
+
+	function uploadImage(image) {
+		var data = new FormData()^;
+		data.append('image', image)^;
+		data.append('path', '/images/')^;
+		data.append('operation','summernote_img_upload')^;
+		^$.ajax({
+			url: '/admin/_server.json',
+			cache: false,
+			contentType: false,
+			processData: false,
+			data: data,
+			type: "post",
+			success: function(url) {
+				var image = ^$('<img style="width:100%">').attr('src', url).addClass('img-fluid')^;
+				^$('#summernote').summernote("insertNode", image[0])^;
+			},
+			error: function(data) {
+				console.log(data)^;
+			}
+		})^;
+	}^;
+
+	function browse(){
+		var id = ^$('#id').val()^;
+		var elang = ^$('#elang').val()^;
+		var url = '/browse/index.html?zone=drafts_feed&elang=' + elang + '&id=' + id^;
+		window.open(url, '_blank')^;
+	}^;
+
+
+
+
+
+})^;
+
+
+</script>
+
+^rem{
+<script type="text/javascript">
+    ^$(document).ready(function() {
+      ^$('#summernote').summernote({
+        height: 300,
+        tabsize: 2
+      })^;
+    })^;
+  </script>
+}
+#endrem
+	<div class="col-md-6 col-12">
+		<div class="img-zone">
+			<form action="" style="float: left">
+				<div id="dropZone" data-path="${path}/$cookie:uid/" class="drop-photo-editor mt-2 h-100" style="padding-top: 2rem^;line-height:1.5rem">^process{^untaint{$_t._dih}}</div>
+			</form>
+
+			$list[^file:list[${path}/$cookie:uid/;\.(jpg|JPG|gif|GIF|jpeg|JPEG|png|PNG)^$]]
+			^list.menu{
+				<div id="^file:justname[$list.name]" data-path="${path}/${cookie:uid}/" class="drop-photo-editor mt-2 h-100 dimg" style="background-image:url(${path}/${cookie:uid}/$list.name)^;background-size:cover^;background-position:center center">
+					<div class="img-action">
+						<i data-id="$form:id" data-img="$list.name" data-path="${path}/${cookie:uid}/" data-uid="$cookie:uid" class="fas fa-circle img-active ^if($pub.active_pic eq "$list.name"){ iactive}"></i>
+						<i data-id="$form:id" data-img="$list.name" data-path="${path}/${cookie:uid}/" data-uid="$cookie:uid" class="fas fa-undo img-rotate"></i>
+						<i data-id="$form:id" data-img="$list.name" data-path="${path}/${cookie:uid}/" data-uid="$cookie:uid" data-prompttext="$_t._txt" title="$_t._txt" class="far fa-file-alt img-text"></i>
+						<i data-id="$form:id" data-img="$list.name" data-path="${path}/${cookie:uid}/" data-uid="$cookie:uid" data-confirmtext="$_t._del" title="$_t._del" class="far fa-trash-alt img-delete"></i>
+					</div>
+				</div>
+			}
+		</div>
+
+
+
+		<script type="text/javascript">
+			jQuery(document).ready(function() {
+
+				var imgZone = jQuery('.img-zone')^;
+				var dropZone = jQuery('#dropZone'),
+				maxFileSize = 4000000^; // максимальный размер файла - 4 мб.
+
+#				// Проверка поддержки браузером
+				if (typeof(window.FileReader) == 'undefined') {
+					dropZone.text('$_t._Not_supported_by_browser')^;
+					dropZone.addClass('error')^;
+				}
+
+#				// Добавляем класс hover при наведении
+				dropZone[0].ondragover = function() {
+					dropZone.addClass('hover')^;
+					return false^;
+				}^;
+
+#				// Убираем класс hover
+				dropZone[0].ondragleave = function() {
+					dropZone.removeClass('hover')^;
+					return false^;
+				}^;
+
+#				// Обрабатываем событие Drop
+				dropZone[0].ondrop = function(event) {
+					event.preventDefault()^;
+					dropZone.removeClass('hover')^;
+					dropZone.addClass('drop')^;
+
+					var file = event.dataTransfer.files[0]^;
+
+#					// Проверяем размер файла
+					if (file.size > maxFileSize) {
+						dropZone.text('$_t._File_is_too_big')^;
+						dropZone.addClass('error')^;
+						return false^;
+					}
+
+					path = jQuery('#dropZone').data('path')^;
+					user = jQuery('#login').val()^;
+					formData = new FormData()^;
+					formData.append('path', path)^;
+					formData.append('user', user)^;
+					formData.append('file', file)^;
+					formData.append('operation', 'publications_img_upload')^;
+					fname = file.name^;
+					nfname = uuid()^;
+					formData.append('nfname', nfname)^;
+					ext = fname.slice((fname.lastIndexOf(".") - 1 >>> 0) + 2)^;
+
+#					// Создаем запрос
+					var xhr = new XMLHttpRequest()^;
+					xhr.upload.addEventListener('progress', uploadProgress, false)^;
+					xhr.onreadystatechange = stateChange^;
+					xhr.open('POST', '/admin/_server.json')^;
+					xhr.setRequestHeader('X-FILE-NAME', file.name)^;
+					xhr.send(formData)^;
+				}^;
+
+#				// Показываем процент загрузки
+				function uploadProgress(event) {
+#					var percent = parseInt(event.loaded / event.total * 100)^;
+#					dropZone.text( percent + '%')^;
+				}^;
+
+#				// Пост обрабочик
+				function stateChange(event) {
+					if (event.target.readyState == 4) {
+						if (event.target.status == 200) {
+#							dropZone.text('Загрузка успешно завершена!')^;
+#							dropZone.html('<img src="' + path + nfname + '.' + ext + '" style="width:130px^;height:130px^;padding-top:0^;margin-top:-3.5rem">')^;
+							imgZone.after('<div id="'+ nfname + '" data-path="' + path + '" class="drop-photo-editor mt-2 h-100 dimg" style="background-image:url(' + path + nfname + '.' + ext + ')^;background-size:cover^;background-position:center center"><div class="img-action"><i data-id="$form:id" data-img="' + nfname + '.' + ext + '" data-path="${path}/${cookie:uid}/" data-uid="$cookie:uid" class="fas fa-circle img-active"></i><i data-id="$form:id" data-img="' + nfname + '.' + ext + '" data-path="${path}/${cookie:uid}/" data-uid="$cookie:uid" class="fas fa-undo img-rotate"></i><i data-id="$form:id" data-img="' + nfname + '.' + ext + '" data-path="${path}/${cookie:uid}/" data-uid="$cookie:uid" class="far fa-file-alt img-text"></i><i data-id="$form:id" data-img="' + nfname + '.' + ext + '" data-path="${path}/${cookie:uid}/" data-uid="$cookie:uid" class="far fa-trash-alt img-delete"></i></div></div>')^;
+
+						} else {
+							dropZone.text('$_t._An_error_has_occurred')^;
+							dropZone.addClass('error')^;
+						}
+					}
+				}^;
+
+				function uuid() {
+					return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+						var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8)^;
+						return v.toString(16)^;
+					})^;
+				}
+			})^;
+		</script>
+	</div>
+#	</div>
+</div>
+
+
+
+#}
+
+
+}
+### end ne list
+
+
+
+##### list
+^if($form:action eq "list"){
+### Секция разделов в главном меню (подразделы)
+^if(def $form:section){$cookie:section[$form:section];$cookie:section[0]}
+$section[$cookie:section]
+
+^connect[$CONNECT]{
+### Поля карты пубдикации
+$t[^table::sql{SELECT * FROM ${BASE}publications_set WHERE type = "$type"}]
+### Ищем idx раздела структуры публикации в главном меню
+$pub_idx[^string:sql{SELECT idx FROM ${BASE}structure WHERE pub_link = "$type"}[$.default[0]]]
+### Ищем id раздела структуры публикации в главном меню
+$pub_id[^string:sql{SELECT id FROM ${BASE}structure WHERE pub_link = "$type"}[$.default[0]]]
+### Меню подразделов публикации
+$vol[^table::sql{SELECT t1.id, t1.name, t2.name as name_p FROM ${BASE}structure t1, ${BASE}structure t2 WHERE t1.idx = "$cookie:idx" AND t1.active = "1" AND t1.id > "1000" AND t1.parent_id > "0" AND t2.id = t1.parent_id AND t1.parent_id != '$pub_id'}]
+^vol.sort{$vol.name_p}
+
+$pub_items[^table::sql{SELECT id, uid, name, ft01, active FROM ${BASE}publications WHERE type = "$type" ^if($section ne "0"){AND sub = "$section"}}]
+^pub_items.sort($pub_items.id)
+}
+#endconnect
+
+
+^if(^vol.count[] != 0){
+	<div style="padding:15px">
+		<select  class="form-control" name="section" id="section">
+			<option value="0" ^if($section eq "" || $section eq "0"){selected}>Все</option>
+			^vol.menu{
+				<option value="$vol.id" ^if($cookie:section eq "$vol.id"){selected}>$vol.name_p $vol.name</option>
+			}
+		</select>
+	</div>
+}
+
+#endrem
+<div class="list-container">
+	<ul id="list" style="padding: 0"> 
+		^pub_items.menu{
+			<div class="pub-list-item ^if($form:id eq "$pub_items.id"){pub-left-active}" id="$pub_items.id" idx="$pub_idx">
+					<div class="list-item-container">
+					<div class="pub-list-left">
+						<p style="color:#000^;font-weight:normal" data-toggle="tooltip" data-placement="top" data-html="true" title="$pub_items.ft01">$pub_items.name</p>
+					</div>
+					<div class="pub-list-right">
+						<a data-id="$pub_items.id" data-uid="$pub_items.uid" data-confirmtext="${_t._del}?" class="list-remove aactions"><i class="fa fa-times"></i></a>
+						<a data-id="$pub_items.id" data-uid="$pub_items.uid" class="list-edit aactions"><i class="fas fa-pen-square"></i></a>
+						<a data-id="$pub_items.id" data-uid="$pub_items.uid" class="list-active aactions"><i id="$pub_items.uid" class="fas fa-check-square ^if($pub_items.active eq "1"){check-active;check-passive}"></i></a>
+					</div>
+				</div>
+			</div> 
+		}
+	</ul> 
+</div>
+^rem{
+<script type="text/javascript">
+	^$("#sortable").sortable({
+#	/*stop: function(event, ui) {
+#		alert("New position: " + ui.item.index())^;
+#	},*/
+	start: function(e, ui) {
+		// creates a temporary attribute on the element with the old index
+		^$(this).attr('data-previndex', ui.item.index())^;
+	},
+	update: function(e, ui) {
+		// gets the new and old index then removes the temporary attribute
+		var newIndex = ui.item.index()^;
+		var oldIndex = ^$(this).attr('data-previndex')^;
+		var element_id = ui.item.attr('id')^;
+		jQuery.post('/i.php',{transportEl : element_id, old_position : oldIndex, new_position : newIndex}).done(function( data ) { alert( "Data Loaded: ")^; })^;
+#		alert('transportEl='+element_id+'&old_position='+oldIndex+'&new_position='+newIndex)^;
+		^$(this).removeAttr('data-previndex')^;
+	}
+})^;
+
+^$("#sortable").disableSelection()^;
+
+
+jQuery('select#section').on('change', function() {
+		jQuery.post('_admin_ajax/__publicadmin.paj', {'action' : 'list', 'section' : jQuery( this ).val()}, function(data) { jQuery('#left-content').html(data) ^; })
+	})^;
+
+	var ss = jQuery('select#section').val()^;
+	if(ss == 0){
+		jQuery('#sortable').sortable('disable')^;
+		jQuery('.ui-state-default').css('cursor','default')^;
+	} else {
+		jQuery('#sortable').sortable('enable')^;
+		jQuery('.ui-state-default').css('cursor','move')^;
+	}
+
+</script>
+}
+
+}
