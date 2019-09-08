@@ -1,12 +1,12 @@
 $echo[]
 ### new
 ^if($form:action eq "new"){
-	^if($form:pass ne $form:pass_re){$echo[Паролі не збігаються.]}
+	^if($form:pass ne $form:pass_re){$echo[$_t._different_passwords]}
 	^if($form:name ne "" && $form:login ne ""  && $form:pass eq $form:pass_re && $form:email ne ""){
 		^connect[$CONNECT]{
 		$dup[^string:sql{SELECT id FROM ${BASE}admins WHERE email = "$form:email"}[$.limit(1) $.default[0]]]
 		^if($dup ne "0"){
-			$echo[Менеджер з електронною поштою $form:email вже існує.]
+			$echo[$_t._this_email $form:email $_t._is_already_in_use]
 		}{	
 			$ch[]
 			^form:fields.foreach[field;value]{ 
@@ -24,7 +24,7 @@ $echo[]
 ^if($form:action eq "edit"){
 
 		
-		^if($form:pass ne $form:pass_re){$echo[Паролі не збігаються.]}{
+		^if($form:pass ne $form:pass_re){$echo[$_t._different_passwords]}{
 	
 		^if($form:name ne "" && $form:login ne "" && $form:email ne ""){
 			$pass[^math:crypt[$form:pass;^$apr1^$]]
@@ -142,7 +142,7 @@ $manag[^table::sql{SELECT * FROM ${BASE}admins WHERE id = "$form:id"}]
 					jQuery('#middle-panel').html(data) ^;
 				},
 				error:  function(xhr, str){
-					alert('Виникла помилка: ' + xhr.responseCode)^;
+					alert('$_t._An_error_has_occurred ' + xhr.responseCode)^;
 				}
 			})^;
 			jQuery.post('_admin_ajax/_admins.paj', {'action' : 'list', 'UID' : '$form:UID'}, function(data){
@@ -160,46 +160,57 @@ $man[^table::sql{SELECT id, login, name, active FROM ${BASE}admins}]
 ^man.sort{$man.id}[desc]
 }
 <table style="width:100%^; margin-top:15px^;">
-^man.menu{	<tr id="$man.id" style="">
-				<td style="width:15px">&nbsp^;</td>
-				<td style="vertical-align:middle"><p style="margin: 10px 0^;"><b>$man.id</b>&nbsp^;$man.login</p><p>$man.name</p></td>
-				<td style="width:15px">&nbsp^;</td>
-				^if($man.active eq "9"){
-					<td></td><td></td><td></td>
-				}{
-				<td style="width:20px"><a id="edit" style="cursor:pointer" 
-				onClick="javascript: 
-						jQuery.post('_admin_ajax/_admins.paj', {'id' : '$man.id', 'action' : 'edit'}, function(data){
-							jQuery('tr').attr('style','')^; 
-							jQuery('tr#$man.id').attr('style','background-color:#C2E4FD')^; 
-							jQuery('#middle-panel').html(data) ^;	
-						})">
-				<span class="glyphicon glyphicon-pencil"></span></a>
-				</td>
-				<td style="width:20px"><a id="remove" style="cursor:pointer" 
-				onClick="javascript: 
-						if (confirm('Видалити?')) {
-							jQuery.post('_admin_ajax/_admins.paj', {'id' : '$man.id', 'action' : 'remove'}, function(data){
-							jQuery('#middle-panel').html(data) ^;	
+	^man.menu{
+		<tr id="$man.id" style="">
+			<td style="width:15px">&nbsp^;</td>
+			<td style="vertical-align:middle"><p style="margin: 10px 0^;"><b>$man.id</b>&nbsp^;$man.login</p><p>$man.name</p></td>
+			<td style="width:15px">&nbsp^;</td>
+			^if($man.active eq "9"){
+				<td></td><td></td><td></td>
+			}{
+				<td style="width:20px">
+					<a class="active" style="cursor:pointer"
+						onClick="javascript: 
+							jQuery.post('_admin_ajax/_admins.paj', {'id' : '$man.id', 'action' : 'active'}, function(data){
 							})^;
-							jQuery.post('_admin_ajax/_admins.paj', {'action' : 'list'}, function(data){
-							jQuery('#left-content').html(data) ^;	
-							})
-						
-						} else {
-							
-						}
-						"><span class="glyphicon glyphicon-remove"></span></a></td>
-				<td style="width:20px"><a id="active" style="cursor:pointer"
-				onClick="javascript: 
-						jQuery.post('_admin_ajax/_admins.paj', {'id' : '$man.id', 'action' : 'active'}, function(data){
-						})^;
-						jQuery.post('_admin_ajax/_admins.paj', {'action' : 'list', 'UID' : '$form:UID'}, function(data){
-							jQuery('#left-content').html(data) ^;	
-						})"><span id="s-${man.id}" class="glyphicon glyphicon-ok ^if($man.active eq '1'){check-active;check-noactive}"></span></a></td>
-				}
-				<td style="width:15px">&nbsp^;</td>
-			</tr>}
+							jQuery.post('_admin_ajax/_admins.paj', {'action' : 'list', 'UID' : '$form:UID'}, function(data){
+								jQuery('#left-content').html(data) ^;
+							})"><i style="font-size: 18px" class="fas fa-check-square ^if($man.active eq '1'){check-active;check-noactive}"></i>
+					</a>
+				</td>
+
+				<td style="width:20px">
+					<a class="edit" style="cursor:pointer" 
+						onClick="javascript: 
+							jQuery.post('_admin_ajax/_admins.paj', {'id' : '$man.id', 'action' : 'edit'}, function(data){
+								jQuery('tr').attr('style','')^; 
+								jQuery('tr#$man.id').attr('style','background-color:#C2E4FD')^; 
+								jQuery('#middle-panel').html(data) ^;
+							})">
+						<i style="font-size: 18px" class="fas fa-pen-square"></i>
+					</a>
+				</td>
+
+				
+				<td style="width:20px">
+					<a class="remove" style="cursor:pointer" 
+						onClick="javascript: 
+							if (confirm('Видалити?')) {
+								jQuery.post('_admin_ajax/_admins.paj', {'id' : '$man.id', 'action' : 'remove'}, function(data){
+									jQuery('#middle-panel').html(data) ^;
+								})^;
+								jQuery.post('_admin_ajax/_admins.paj', {'action' : 'list'}, function(data){
+									jQuery('#left-content').html(data) ^;
+								})
+							} else {
+							}
+						"><i style="font-size: 18px" class="fa fa-times"></i>
+					</a>
+				</td>
+			}
+			<td style="width:15px">&nbsp^;</td>
+		</tr>
+	}
 </table>
 
 }
