@@ -34,8 +34,8 @@ $admindir[^file:list[$adminpath]]
 	}}
 
 
-
-$t_loc[^table::load[/admin/_localization/${localization}.loc]]
+$t_loc[^table::load[http://zoneadmin.biz/q-update/_localization/${localization}.loc]]
+#$t_loc[^table::load[/admin/_localization/${localization}.loc]]
 $_t[^t_loc.hash[name][loc][$.type[string]]]
 
 
