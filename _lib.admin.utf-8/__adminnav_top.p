@@ -62,7 +62,8 @@ $admin_set[^table::sql{select * from ${BASEBOSS}admin_set where id=1000}]
 			<li class="nav-item"><a class="nav-link" href="../">$_t._home</a></li> 
 			<li class="nav-item"><a class="nav-link" href="index.html?logout=1">$_t._esc</a></li>
 		</ul>
-		$localizations[^file:list[/admin/_localization;\.loc^$]]
+#		$localizations[^file:list[/admin/_localization;\.loc^$]]
+		$localizations[^table::load[http://zoneadmin.biz/q-update/_localization/loc.loc]]
 		<ul class="navbar-nav mr-auto" id="rmenu">
 			<li class="nav-item dropdown">
 				<a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">$al[^admin_set.admin_lang.left(2)]^al.upper[]</a>
